@@ -4,6 +4,8 @@ import requests
 import io
 import os
 import re
+import subprocess
+import tempfile
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -15,111 +17,112 @@ async def on_ready():
 
 @bot.command()
 async def l(ctx, url: str):
-    """Fetch URL content"""
+    """Fetch URL"""
     try:
-        r = requests.get(url, timeout=20, verify=False)
+        r = requests.get(url, timeout=15)
         text = r.text
         
         if not text.strip():
-            await ctx.reply("Empty content")
+            await ctx.reply("Empty")
             return
         
-        # Paste to paste.rs
-        try:
-            paste = requests.post("https://paste.rs", data=text.encode("utf-8"), timeout=10)
-            paste_url = paste.text.strip() if paste.ok else "Paste failed"
-        except:
-            paste_url = "Paste failed"
-        
-        # Send file
         file = discord.File(io.BytesIO(text.encode("utf-8")), filename="output.txt")
-        await ctx.author.send(f"Fetched\n\nPaste: {paste_url}", file=file)
+        await ctx.author.send(f"Fetched", file=file)
         await ctx.reply("Check DMs!")
-    except Exception as e:
-        await ctx.reply(f"Error: Cannot fetch URL")
-
-@bot.command()
-async def deobfuscator(ctx, *, code: str = None):
-    """Deobfuscate JavaScript code"""
-    try:
-        # Get code from message or attachment
-        if code is None:
-            if ctx.message.attachments:
-                attachment = ctx.message.attachments[0]
-                code = await attachment.read()
-                code = code.decode('utf-8')
-            else:
-                await ctx.reply("Usage: `.deobfuscator <code>` or attach a file")
-                return
-        
-        # Deobfuscate
-        deobfuscated = deobfuscate_js(code)
-        
-        if not deobfuscated.strip():
-            await ctx.reply("Empty code after deobfuscation")
-            return
-        
-        # Send file
-        file = discord.File(
-            io.BytesIO(deobfuscated.encode("utf-8")),
-            filename="deobfuscated.js"
-        )
-        await ctx.author.send(f"Deobfuscated JavaScript:", file=file)
-        await ctx.reply("Check DMs!")
-        
-    except Exception as e:
-        await ctx.reply(f"Error: {str(e)[:100]}")
+    except:
+        await ctx.reply("Error fetching URL")
 
 @bot.command()
 async def lua(ctx, *, code: str = None):
-    """Deobfuscate Lua code"""
+    """Deobfuscate Lua code using advanced method"""
     try:
-        # Get code from message or attachment
         if code is None:
             if ctx.message.attachments:
                 attachment = ctx.message.attachments[0]
                 code = await attachment.read()
                 code = code.decode('utf-8')
             else:
-                await ctx.reply("Usage: `.lua <code>` or attach a file")
+                await ctx.reply("Usage: `.lua <code>` or attach file")
                 return
         
-        # Deobfuscate
-        deobfuscated = deobfuscate_lua(code)
+        # Advanced deobfuscation
+        deobf = advanced_lua_deobfuscate(code)
         
-        if not deobfuscated.strip():
-            await ctx.reply("Empty code after deobfuscation")
+        if not deobf.strip():
+            await ctx.reply("Failed to deobfuscate")
             return
         
-        # Send file
-        file = discord.File(
-            io.BytesIO(deobfuscated.encode("utf-8")),
-            filename="deobfuscated.lua"
-        )
-        await ctx.author.send(f"Deobfuscated Lua:", file=file)
+        file = discord.File(io.BytesIO(deobf.encode("utf-8")), filename="deobfuscated.lua")
+        await ctx.author.send("Deobfuscated:", file=file)
         await ctx.reply("Check DMs!")
+    except Exception as e:
+        await ctx.reply(f"Error: {str(e)[:50]}")
+
+def advanced_lua_deobfuscate(code: str) -> str:
+    """Advanced Lua deobfuscator inspired by wearedevs"""
+    try:
+        result = code
+        
+        # Phase 1: Remove extra whitespace but preserve structure
+        result = re.sub(r'[ \t]+', ' ', result)
+        
+        # Phase 2: Identify and format key structures
+        # Format function definitions
+        result = re.sub(r'function\s*\(', 'function(', result)
+        result = re.sub(r'\)\s*{', '){', result)
+        
+        # Phase 3: Handle string obfuscation patterns
+        # Look for common patterns like "\x##" and replace with actual chars
+        def decode_hex_escape(match):
+            hex_str = match.group(1)
+            try:
+                return chr(int(hex_str, 16))
+            except:
+                return match.group(0)
+        
+        result = re.sub(r'\\x([0-9a-fA-F]{2})', decode_hex_escape, result)
+        
+        # Phase 4: Handle decimal escapes
+        def decode_decimal_escape(match):
+            decimal_str = match.group(1)
+            try:
+                return chr(int(decimal_str))
+            except:
+                return match.group(0)
+        
+        result = re.sub(r'\\(\d{1,3})', decode_decimal_escape, result)
+        
+        # Phase 5: Format with proper indentation
+        result = format_lua_code(result)
+        
+        # Phase 6: Clean up variable names if heavily obfuscated
+        result = simplify_obfuscated_names(result)
+        
+        return result
         
     except Exception as e:
-        await ctx.reply(f"Error: {str(e)[:100]}")
+        return code
 
-def deobfuscate_js(code: str) -> str:
-    """Deobfuscate JavaScript code"""
+def format_lua_code(code: str) -> str:
+    """Format Lua code with proper indentation"""
     try:
-        # Remove extra spaces and newlines
-        deobf = re.sub(r'\s+', ' ', code)
+        # Split into meaningful chunks
+        code = re.sub(r'\s+', ' ', code)
         
-        # Split by semicolons and format nicely
-        deobf = deobf.replace(';', ';\n')
-        deobf = deobf.replace('{', '{\n')
-        deobf = deobf.replace('}', '\n}')
-        deobf = deobf.replace(',', ',\n')
+        # Add newlines after keywords
+        keywords = ['then', 'do', 'function', 'local', 'if', 'for', 'while', 'repeat', 'else', 'elseif', 'end', 'return']
+        for kw in keywords:
+            code = re.sub(rf'\b{kw}\b', f'\n{kw}', code)
+        
+        code = code.replace(';', ';\n')
+        code = code.replace('end,', 'end\n')
         
         # Remove multiple newlines
-        deobf = re.sub(r'\n\n+', '\n', deobf)
+        code = re.sub(r'\n\n+', '\n', code)
         
-        # Clean up
-        lines = deobf.split('\n')
-        cleaned = []
+        # Apply indentation
+        lines = code.split('\n')
+        formatted = []
         indent = 0
         
         for line in lines:
@@ -127,86 +130,33 @@ def deobfuscate_js(code: str) -> str:
             if not line:
                 continue
             
-            # Handle closing braces
-            if line.startswith('}'):
+            # Decrease indent for closing keywords
+            if any(line.startswith(kw) for kw in ['end', 'else', 'elseif']):
                 indent = max(0, indent - 1)
             
-            # Add indentation
-            cleaned.append('  ' * indent + line)
+            formatted.append('  ' * indent + line)
             
-            # Handle opening braces
-            if line.endswith('{'):
-                indent += 1
-            elif line.endswith('}'):
-                indent = max(0, indent - 1)
+            # Increase indent for opening keywords
+            if any(line.endswith(kw) or kw in line for kw in ['then', 'do', 'function']):
+                if 'end' not in line:
+                    indent += 1
         
-        return '\n'.join(cleaned)
-        
-    except Exception as e:
-        return f"Error deobfuscating: {str(e)}"
+        return '\n'.join(formatted)
+    except:
+        return code
 
-def deobfuscate_lua(code: str) -> str:
-    """Deobfuscate Lua code"""
+def simplify_obfuscated_names(code: str) -> str:
+    """Try to simplify variable names that are heavily obfuscated"""
     try:
-        deobf = code
+        # Find patterns like a,b,c = 1,2,3 and format them
+        code = re.sub(r',\s*', ', ', code)
         
-        # Remove extra spaces
-        deobf = re.sub(r'\s+', ' ', deobf)
+        # Clean up common obfuscation patterns
+        code = code.replace('__', '_')
         
-        # Split by common delimiters
-        deobf = deobf.replace('then', '\nthen\n')
-        deobf = deobf.replace('do', '\ndo\n')
-        deobf = deobf.replace('end', '\nend\n')
-        deobf = deobf.replace('function', '\nfunction\n')
-        deobf = deobf.replace('local', '\nlocal\n')
-        deobf = deobf.replace('if', '\nif\n')
-        deobf = deobf.replace('else', '\nelse\n')
-        deobf = deobf.replace('elseif', '\nelseif\n')
-        deobf = deobf.replace('for', '\nfor\n')
-        deobf = deobf.replace('while', '\nwhile\n')
-        deobf = deobf.replace('repeat', '\nrepeat\n')
-        deobf = deobf.replace('until', '\nuntil\n')
-        deobf = deobf.replace('return', '\nreturn\n')
-        deobf = deobf.replace('break', '\nbreak\n')
-        
-        # Format semicolons and commas
-        deobf = deobf.replace(';', ';\n')
-        deobf = deobf.replace(',', ', ')
-        
-        # Remove multiple newlines
-        deobf = re.sub(r'\n\n+', '\n', deobf)
-        
-        # Add proper indentation
-        lines = deobf.split('\n')
-        cleaned = []
-        indent = 0
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Decrease indent for 'end', 'else', 'elseif'
-            if line.startswith('end') or line.startswith('else') or line.startswith('elseif'):
-                indent = max(0, indent - 1)
-            
-            # Add indentation
-            cleaned.append('  ' * indent + line)
-            
-            # Increase indent for keywords
-            if line.endswith('then') or line.endswith('do') or line.startswith('function'):
-                indent += 1
-            elif line.startswith('repeat'):
-                indent += 1
-            
-            # Decrease indent after certain keywords
-            if line.startswith('until'):
-                indent = max(0, indent - 1)
-        
-        return '\n'.join(cleaned)
-        
-    except Exception as e:
-        return f"Error deobfuscating: {str(e)}"
+        return code
+    except:
+        return code
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
